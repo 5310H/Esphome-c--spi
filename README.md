@@ -1,4 +1,4 @@
-# Esphome-c--spi# ESPHome C API (Encrypted Client)
+# Esphome-c-api ESPHome C API (Encrypted Client)
 
 A portable C client library for the encrypted ESPHome Native API, supporting:
 
