@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -10,25 +11,22 @@ extern "C" {
 
 // ---------------------------------------------------------------------------
 // Message types used by the ESPHome API.
-// These match the placeholder values in messages.c.
-// Later you can expand this enum to include real ESPHome protobuf types.
+// These correspond to the message tags in the ESPHome API protocol.
 // ---------------------------------------------------------------------------
 typedef enum {
-    ESPH_MSG_SUBSCRIBE_STATES = 1,
-    ESPH_MSG_SWITCH_COMMAND   = 2,
-    // Add more message types here as needed
+    ESPH_MSG_HELLO_REQUEST           = 1,
+    ESPH_MSG_HELLO_RESPONSE          = 2,
+    ESPH_MSG_DEVICE_INFO_REQUEST     = 9,
+    ESPH_MSG_DEVICE_INFO_RESPONSE    = 10,
+    ESPH_MSG_SUBSCRIBE_STATES_REQUEST = 20,
+    ESPH_MSG_SWITCH_COMMAND_REQUEST  = 26,
 } esph_msg_type_t;
 
 /**
  * Encode a message into a protobuf frame.
  *
- * Placeholder implementation:
- *   - Writes type byte
- *   - Writes 2-byte placeholder length
- *   - Returns 3
- *
  * @param type     Message type enum
- * @param payload  Pointer to message-specific struct (unused for now)
+ * @param payload  Pointer to the Nanopb-generated struct for this message type
  * @param out      Output buffer
  * @param maxlen   Maximum bytes available in output buffer
  * @return number of bytes written, <0 on failure
