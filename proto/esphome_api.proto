@@ -1,1 +1,121 @@
+syntax = "proto3";
 
+package esphome.api;
+
+// ============================================================
+// Core handshake
+// ============================================================
+
+message HelloRequest {
+  string client_info = 1;
+}
+
+message HelloResponse {
+  string server_info = 1;
+  uint32 api_version_major = 2;
+  uint32 api_version_minor = 3;
+}
+
+message ConnectRequest {
+  string password = 1;
+}
+
+message ConnectResponse {
+  bool invalid_password = 1;
+}
+
+// ============================================================
+// Entity listing
+// ============================================================
+
+message ListEntitiesRequest {}
+
+message EntityInfo {
+  uint32 key = 1;
+  string object_id = 2;
+  string name = 3;
+  uint32 legacy_type = 4;
+}
+
+message ListEntitiesResponse {
+  repeated EntityInfo entities = 1;
+}
+
+// ============================================================
+// Subscribe to states
+// ============================================================
+
+message SubscribeStatesRequest {}
+
+message EntityState {
+  uint32 key = 1;
+  bool state = 2;          // for switches/lights
+  float value = 3;         // for sensors
+  string text = 4;         // for text sensors
+}
+
+// ============================================================
+// Switch commands
+// ============================================================
+
+message SwitchCommandRequest {
+  uint32 key = 1;
+  bool state = 2;
+}
+
+// ============================================================
+// Light commands (optional but included for completeness)
+// ============================================================
+
+message LightCommandRequest {
+  uint32 key = 1;
+  bool has_state = 2;
+  bool state = 3;
+
+  bool has_brightness = 4;
+  float brightness = 5;
+
+  bool has_color_temperature = 6;
+  float color_temperature = 7;
+
+  bool has_rgb = 8;
+  float red = 9;
+  float green = 10;
+  float blue = 11;
+}
+
+// ============================================================
+// Ping / Disconnect
+// ============================================================
+
+message PingRequest {}
+message PingResponse {}
+
+message DisconnectRequest {}
+message DisconnectResponse {}
+
+// ============================================================
+// Log messages
+// ============================================================
+
+message SubscribeLogsRequest {
+  bool level_debug = 1;
+  bool level_info = 2;
+  bool level_warn = 3;
+  bool level_error = 4;
+}
+
+message LogMessage {
+  string message = 1;
+  uint32 level = 2;
+  string tag = 3;
+}
+
+// ============================================================
+// Envelope frame
+// ============================================================
+
+message Frame {
+  uint32 type = 1;
+  bytes payload = 2;
+}
