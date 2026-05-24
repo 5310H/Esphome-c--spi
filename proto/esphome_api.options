@@ -1,1 +1,44 @@
+# ============================================================
+# Core handshake
+# ============================================================
 
+esphome.api.HelloRequest.client_info            max_length:64
+esphome.api.HelloResponse.server_info           max_length:64
+esphome.api.ConnectRequest.password             max_length:64
+
+# ============================================================
+# Entity listing
+# ============================================================
+
+esphome.api.EntityInfo.object_id                max_length:64
+esphome.api.EntityInfo.name                     max_length:64
+
+# Up to 64 entities (switches, lights, sensors, etc.)
+esphome.api.ListEntitiesResponse.entities       max_count:64
+
+# ============================================================
+# State updates
+# ============================================================
+
+# Text sensors can be long; 128 is safe and small
+esphome.api.EntityState.text                    max_length:128
+
+# ============================================================
+# Logs
+# ============================================================
+
+esphome.api.LogMessage.message                  max_length:256
+esphome.api.LogMessage.tag                      max_length:64
+
+# ============================================================
+# Light commands
+# ============================================================
+
+# No strings here — all numeric fields, so no options needed
+
+# ============================================================
+# Envelope frame
+# ============================================================
+
+# ESPHome frames can be large; 1024 is safe for nanopb
+esphome.api.Frame.payload                       max_length:1024
