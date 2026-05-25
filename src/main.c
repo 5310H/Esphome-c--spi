@@ -5,6 +5,7 @@
 #include <arpa/inet.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <time.h>
 
 #include <sodium.h>
 
@@ -25,12 +26,19 @@ enum {
     MSG_ENCRYPTED_MESSAGE    = 5,
     MSG_CONNECT_REQUEST      = 6,
     MSG_CONNECT_RESPONSE     = 7,
+    MSG_SWITCH_STATE_RESPONSE = 17,
+    MSG_PING_REQUEST         = 9,
+    MSG_PING_RESPONSE        = 10,
     MSG_LIST_ENTITIES_REQUEST = 11,
     MSG_LIST_ENTITIES_SENSOR_RESPONSE = 12,
     MSG_LIST_ENTITIES_BINARY_SENSOR_RESPONSE = 13,
     MSG_LIST_ENTITIES_SWITCH_RESPONSE = 14,
     MSG_LIST_ENTITIES_LIGHT_RESPONSE = 15,
-    MSG_LIST_ENTITIES_DONE_RESPONSE = 19
+    MSG_LIST_ENTITIES_DONE_RESPONSE = 19,
+    MSG_SUBSCRIBE_STATES_REQUEST = 20,
+    MSG_SENSOR_STATE_RESPONSE = 21,
+    MSG_BINARY_SENSOR_STATE_RESPONSE = 22,
+    MSG_SWITCH_COMMAND_REQUEST = 26
 };
 
 /* ---------------------------------------------------------
@@ -183,11 +191,12 @@ static size_t encrypt_message(const uint8_t *session_key,
 /* ---------------------------------------------------------
  * Decrypt EncryptedMessage
  * --------------------------------------------------------- */
-static size_t decrypt_message(const uint8_t *session_key,
+static bool decrypt_message(const uint8_t *session_key,
                               const uint8_t *payload,
                               size_t len,
                               uint8_t *out,
-                              uint32_t *inner_type)
+                              uint32_t *inner_type,
+                              size_t *out_len)
 {
     EncryptedMessage enc = EncryptedMessage_init_default;
     uint8_t ciphertext[2048];
@@ -200,7 +209,7 @@ static size_t decrypt_message(const uint8_t *session_key,
     
     if (!pb_decode(&stream, EncryptedMessage_fields, &enc)) {
         printf("Failed to decode EncryptedMessage\n");
-        return 0;
+        return false;
     }
     
     if (inner_type) *inner_type = enc.type;
@@ -214,10 +223,11 @@ static size_t decrypt_message(const uint8_t *session_key,
                                                   NULL, 0, nonce, session_key) != 0)
     {
         printf("Decryption failed\n");
-        return 0;
+        return false;
     }
     
-    return (size_t)plen;
+    if (out_len) *out_len = (size_t)plen;
+    return true;
 }
 
 /* ---------------------------------------------------------
@@ -372,8 +382,8 @@ int main(int argc, char *argv[])
 
     uint8_t decrypted[512];
     uint32_t inner_type;
-    size_t dlen = decrypt_message(session_key, payload, plen, decrypted, &inner_type);
-    if (dlen == 0) return 1;
+    size_t dlen;
+    if (!decrypt_message(session_key, payload, plen, decrypted, &inner_type, &dlen)) return 1;
 
     ConnectResponse cres = ConnectResponse_init_default;
     pb_istream_t istream_conn = pb_istream_from_buffer(decrypted, dlen);
@@ -401,8 +411,7 @@ int main(int argc, char *argv[])
     while (!list_done) {
         if (!recv_frame(sock, &type, payload, sizeof(payload), &plen)) break;
         
-        dlen = decrypt_message(session_key, payload, plen, decrypted, &inner_type);
-        if (dlen == 0) continue;
+        if (!decrypt_message(session_key, payload, plen, decrypted, &inner_type, &dlen)) continue;
 
         pb_istream_t is = pb_istream_from_buffer(decrypted, dlen);
         char name_buf[128];
@@ -455,6 +464,114 @@ int main(int argc, char *argv[])
                 break;
             default:
                 printf("Received other encrypted message type: %u\n", inner_type);
+        }
+    }
+
+    /* ---------------- SUBSCRIBE STATES ---------------- */
+    printf("Subscribing to state updates...\n");
+    SubscribeStatesRequest sreq = SubscribeStatesRequest_init_default;
+    size_t sreq_len = encode_message(SubscribeStatesRequest_fields, &sreq, plain);
+    size_t sreq_enc_len = encrypt_message(session_key, MSG_SUBSCRIBE_STATES_REQUEST,
+                                          plain, sreq_len, buf);
+    send_frame(sock, MSG_ENCRYPTED_MESSAGE, buf, sreq_enc_len);
+
+    /* ---------------- SWITCH COMMAND ---------------- */
+    // Example: Toggle the "Fake Switch" (Key: 3) to ON
+    printf("Sending SwitchCommandRequest (Key: 3, State: ON)...\n");
+    SwitchCommandRequest swreq = SwitchCommandRequest_init_default;
+    swreq.key = 3;
+    swreq.state = true;
+    size_t swreq_len = encode_message(SwitchCommandRequest_fields, &swreq, plain);
+    size_t swreq_enc_len = encrypt_message(session_key, MSG_SWITCH_COMMAND_REQUEST,
+                                          plain, swreq_len, buf);
+    send_frame(sock, MSG_ENCRYPTED_MESSAGE, buf, swreq_enc_len);
+
+    /* ---------------- EVENT LOOP ---------------- */
+    printf("Listening for state updates (Ctrl+C to stop)...\n");
+    time_t last_ping = time(NULL);
+    int ping_count = 0;
+    bool keep_running = true;
+    bool is_fake_device = (strcmp(host, "127.0.0.1") == 0);
+
+    while (keep_running) {
+        fd_set rfds;
+        struct timeval tv;
+        int retval;
+
+        FD_ZERO(&rfds);
+        FD_SET(sock, &rfds);
+
+        tv.tv_sec = 1; // Check timing every second
+        tv.tv_usec = 0;
+
+        retval = select(sock + 1, &rfds, NULL, NULL, &tv);
+
+        if (retval == -1) {
+            perror("select()");
+            break;
+        }
+
+        time_t now = time(NULL);
+        if (now - last_ping >= 10 && (!is_fake_device || ping_count < 5)) {
+            PingRequest preq = PingRequest_init_default;
+            size_t preq_len = encode_message(PingRequest_fields, &preq, plain);
+            size_t preq_enc_len = encrypt_message(session_key, MSG_PING_REQUEST,
+                                                  plain, preq_len, buf);
+            if (send_frame(sock, MSG_ENCRYPTED_MESSAGE, buf, preq_enc_len)) {
+                printf("Sent Ping\n");
+                last_ping = now;
+                ping_count++;
+            }
+        }
+
+        if (retval > 0 && FD_ISSET(sock, &rfds)) {
+            if (!recv_frame(sock, &type, payload, sizeof(payload), &plen)) {
+                printf("Connection closed by device.\n");
+                break;
+            }
+            
+            if (!decrypt_message(session_key, payload, plen, decrypted, &inner_type, &dlen)) continue;
+
+            pb_istream_t is = pb_istream_from_buffer(decrypted, dlen);
+
+            switch (inner_type) {
+            case MSG_SENSOR_STATE_RESPONSE: {
+                SensorStateResponse res = SensorStateResponse_init_default;
+                if (pb_decode(&is, SensorStateResponse_fields, &res)) {
+                    printf(" [UPDATE] Sensor Key: %u, State: %.2f\n", res.key, res.state);
+                }
+                break;
+            }
+            case MSG_BINARY_SENSOR_STATE_RESPONSE: {
+                BinarySensorStateResponse res = BinarySensorStateResponse_init_default;
+                if (pb_decode(&is, BinarySensorStateResponse_fields, &res)) {
+                    printf(" [UPDATE] Binary Sensor Key: %u, State: %s\n", 
+                           res.key, res.state ? "ON" : "OFF");
+                }
+                break;
+            }
+            case MSG_SWITCH_STATE_RESPONSE: {
+                SwitchStateResponse res = SwitchStateResponse_init_default;
+                if (pb_decode(&is, SwitchStateResponse_fields, &res)) {
+                    printf(" [UPDATE] Switch Key: %u, State: %s\n", 
+                           res.key, res.state ? "ON" : "OFF");
+                }
+                break;
+            }
+            case MSG_PING_RESPONSE:
+                if (is_fake_device) {
+                    printf("Received Pong (%d/5)\n", ping_count);
+                    if (ping_count >= 5) {
+                        printf("Completed 5 ping cycles with fake_device. Exiting loop.\n");
+                        keep_running = false;
+                    }
+                } else {
+                    printf("Received Pong\n");
+                }
+                break;
+            default:
+                printf("Received unsolicited encrypted message type: %u\n", inner_type);
+            }
         }
     }
 

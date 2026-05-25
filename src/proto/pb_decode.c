@@ -54,6 +54,34 @@ bool pb_decode_varint(pb_istream_t *stream, uint64_t *value)
     return false;
 }
 
+bool pb_decode_fixed32(pb_istream_t *stream, void *dest)
+{
+    uint8_t bytes[4];
+    if (!pb_read(stream, bytes, 4)) return false;
+    
+    uint32_t value = ((uint32_t)bytes[0] << 0) |
+                     ((uint32_t)bytes[1] << 8) |
+                     ((uint32_t)bytes[2] << 16) |
+                     ((uint32_t)bytes[3] << 24);
+    
+    memcpy(dest, &value, 4);
+    return true;
+}
+
+bool pb_decode_fixed64(pb_istream_t *stream, void *dest)
+{
+    uint8_t bytes[8];
+    if (!pb_read(stream, bytes, 8)) return false;
+    
+    uint64_t value = 0;
+    for (int i = 0; i < 8; i++) {
+        value |= (uint64_t)bytes[i] << (i * 8);
+    }
+    
+    memcpy(dest, &value, 8);
+    return true;
+}
+
 bool pb_decode_tag(pb_istream_t *stream, pb_wire_type_t *wire_type, uint32_t *tag, bool *eof)
 {
     uint64_t temp;
@@ -126,6 +154,14 @@ bool pb_decode(pb_istream_t *stream, const pb_field_t fields[], void *dest_struc
                     else if (iter.pos->data_size == 4) { uint32_t v = (uint32_t)val; memcpy(iter.pData, &v, 4); }
                     else if (iter.pos->data_size == 2) { uint16_t v = (uint16_t)val; memcpy(iter.pData, &v, 2); }
                     else if (iter.pos->data_size == 1) { uint8_t v = (uint8_t)val;  memcpy(iter.pData, &v, 1); }
+                }
+                else if (PB_LTYPE(type) == PB_LTYPE_FIXED32)
+                {
+                    if (!pb_decode_fixed32(stream, iter.pData)) return false;
+                }
+                else if (PB_LTYPE(type) == PB_LTYPE_FIXED64)
+                {
+                    if (!pb_decode_fixed64(stream, iter.pData)) return false;
                 }
                 else
                 {

@@ -12,11 +12,11 @@
 
 ## Phase 2 — Core API
 - [x] Hello / Connect (2026-05-24 20:45 EST)
-- [x] ListEntities (2026-05-24 20:50 EST)
-- [ ] SubscribeStates
-- [ ] Ping / Pong
-- [ ] Switch commands
-- [ ] Sensor updates
+- [x] ListEntities (2026-05-24 21:55 EST)
+- [x] SubscribeStates (2026-05-24 21:55 EST)
+- [x] Ping / Pong (2026-05-24 21:55 EST)
+- [x] Switch commands (2026-05-24 21:55 EST)
+- [x] Sensor updates (2026-05-24 21:55 EST)
 
 ## Phase 3 — ESP32 Support
 - [ ] ESP-IDF transport backend
@@ -35,4 +35,4 @@
 - [ ] Publish to ESP-IDF component registry
 - [ ] Encourage contributions
 
-*Last Updated: 2026-05-24 20:50 EST*
+*Last Updated: 2026-05-24 21:55 EST*
