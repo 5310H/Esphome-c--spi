@@ -1,18 +1,18 @@
 # Roadmap
 
 ## Phase 1 — Foundation
-- [x] Project skeleton
-- [x] Public headers
-- [x] Example clients
-- [ ] Noise handshake scaffolding
-- [ ] Encrypted transport layer
-- [ ] Protobuf integration (nanopb)
-- [ ] Basic message framing
-- [ ] Handshake test harness
+- [x] Project skeleton (2026-05-24 20:45 EST)
+- [x] Public headers (2026-05-24 20:45 EST)
+- [x] Example clients (2026-05-24 20:45 EST)
+- [x] Noise handshake scaffolding (2026-05-24 20:45 EST)
+- [x] Encrypted transport layer (2026-05-24 20:45 EST)
+- [x] Protobuf integration (nanopb) (2026-05-24 20:45 EST)
+- [x] Basic message framing (2026-05-24 20:45 EST)
+- [x] Handshake test harness (2026-05-24 20:45 EST)
 
 ## Phase 2 — Core API
-- [ ] Hello / Connect
-- [ ] ListEntities
+- [x] Hello / Connect (2026-05-24 20:45 EST)
+- [x] ListEntities (2026-05-24 20:50 EST)
 - [ ] SubscribeStates
 - [ ] Ping / Pong
 - [ ] Switch commands
@@ -34,3 +34,5 @@
 - [ ] Publish to PlatformIO registry
 - [ ] Publish to ESP-IDF component registry
 - [ ] Encourage contributions
+
+*Last Updated: 2026-05-24 20:50 EST*

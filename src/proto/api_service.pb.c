@@ -69,6 +69,18 @@ const pb_field_t SwitchCommandRequest_fields[3] = {
     PB_LAST_FIELD
 };
 
+const pb_field_t ListEntitiesLightResponse_fields[9] = {
+    PB_FIELD(  1, STRING  , SINGULAR, CALLBACK, FIRST, ListEntitiesLightResponse, object_id, object_id, 0),
+    PB_FIELD(  2, UINT32  , SINGULAR, STATIC  , OTHER, ListEntitiesLightResponse, key, object_id, 0),
+    PB_FIELD(  3, STRING  , SINGULAR, CALLBACK, OTHER, ListEntitiesLightResponse, name, key, 0),
+    PB_FIELD(  4, STRING  , SINGULAR, CALLBACK, OTHER, ListEntitiesLightResponse, unique_id, name, 0),
+    PB_FIELD(  5, STRING  , SINGULAR, CALLBACK, OTHER, ListEntitiesLightResponse, icon, unique_id, 0),
+    PB_FIELD(  6, INT32   , SINGULAR, STATIC  , OTHER, ListEntitiesLightResponse, entity_category, icon, 0),
+    PB_FIELD(  7, STRING  , SINGULAR, CALLBACK, OTHER, ListEntitiesLightResponse, supported_color_modes, entity_category, 0),
+    PB_FIELD(  8, STRING  , SINGULAR, CALLBACK, OTHER, ListEntitiesLightResponse, effects, supported_color_modes, 0),
+    PB_LAST_FIELD
+};
+
 const pb_field_t LightCommandRequest_fields[18] = {
     PB_FIELD(  1, UINT32  , SINGULAR, STATIC  , FIRST, LightCommandRequest, key, key, 0),
     PB_FIELD(  2, BOOL    , SINGULAR, STATIC  , OTHER, LightCommandRequest, has_state, key, 0),

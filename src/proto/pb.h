@@ -53,8 +53,8 @@ typedef struct pb_field_s pb_field_t;
 struct pb_field_s {
     uint32_t tag;
     pb_type_t type;
-    uint8_t data_offset;
-    int8_t size_offset;
+    uint32_t data_offset;
+    int32_t size_offset;
     uint8_t data_size;
     uint8_t array_size;
     const void *ptr;

@@ -29,10 +29,10 @@ typedef struct _EncryptedMessage {
 /* Initializer values for message structs */
 #define EncryptionRequest_init_default           {0}
 #define EncryptionResponse_init_default          {0}
-#define EncryptedMessage_init_default            {0, {NULL, NULL}}
+#define EncryptedMessage_init_default            {0, {{NULL}, NULL}}
 #define EncryptionRequest_init_zero              {0}
 #define EncryptionResponse_init_zero             {0}
-#define EncryptedMessage_init_zero               {0, {NULL, NULL}}
+#define EncryptedMessage_init_zero               {0, {{NULL}, NULL}}
 
 /* Field tags (for use in manual encoding/decoding) */
 #define EncryptedMessage_type_tag                1

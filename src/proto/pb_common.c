@@ -2,46 +2,42 @@
 
 bool pb_field_iter_begin(pb_field_iter_t *iter, const pb_field_t *fields, void *dest_struct)
 {
+    if (fields == NULL || fields->tag == 0) return false;
     iter->start = fields;
     iter->pos = fields;
     iter->dest_struct = dest_struct;
-    iter->pData = (char*)dest_struct + iter->pos->data_offset;
-    iter->pSize = (char*)iter->pData + iter->pos->size_offset;
+    iter->pData = (uint8_t*)dest_struct + iter->pos->data_offset;
+    iter->pSize = (uint8_t*)iter->pData + iter->pos->size_offset;
     return true;
 }
 
 bool pb_field_iter_next(pb_field_iter_t *iter)
 {
-    const pb_field_t *prev_field = iter->pos;
+    const pb_field_t *next_pos = iter->pos + 1;
+    if (next_pos->tag == 0) return false;
 
-    if (prev_field->tag == 0)
-    {
-        return false;
-    }
-    
-    iter->pos++;
-    if (iter->pos->tag == 0)
-    {
-        pb_field_iter_begin(iter, iter->start, iter->dest_struct);
-        return false;
-    }
-    
-    iter->pData = (char*)iter->pData + prev_field->data_offset + iter->pos->data_offset;
-    iter->pSize = (char*)iter->pData + iter->pos->size_offset;
+    iter->pos = next_pos;
+    /* Re-calculate absolute pointers from struct base */
+    iter->pData = (uint8_t*)iter->dest_struct + iter->pos->data_offset;
+    iter->pSize = (uint8_t*)iter->pData + iter->pos->size_offset;
     return true;
 }
 
 bool pb_field_iter_find(pb_field_iter_t *iter, uint32_t tag)
 {
-    const pb_field_t *start = iter->pos;
-    
-    do {
-        if (iter->pos->tag == tag && PB_LTYPE(iter->pos->type) != PB_LTYPE_EXTENSION)
-        {
-            return true;
-        }
-        pb_field_iter_next(iter);
-    } while (iter->pos != start);
-    
+    if (iter->pos->tag == tag) return true;
+
+    const pb_field_t *start_pos = iter->pos;
+    while (pb_field_iter_next(iter)) {
+        if (iter->pos->tag == tag) return true;
+    }
+
+    /* Wrap around to start */
+    pb_field_iter_begin(iter, iter->start, iter->dest_struct);
+    if (iter->pos->tag == tag) return true;
+    while (pb_field_iter_next(iter) && iter->pos != start_pos) {
+        if (iter->pos->tag == tag) return true;
+    }
+
     return false;
 }

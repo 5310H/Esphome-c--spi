@@ -9,6 +9,7 @@ protobuf integration, ESP32 support, and documentation.
 ## How to help
 
 - Implement missing API features
+- Refine the internal Nanopb implementation (alignment and pointer safety)
 - Improve Noise-PSK handshake correctness
 - Add tests for message framing and encryption
 - Add ESP32 examples or ESP-IDF integration
@@ -34,3 +35,5 @@ protobuf integration, ESP32 support, and documentation.
 ## Communication
 
 Open an issue if you want to discuss a feature or design change.
+
+*Last Updated: 2026-05-24 20:45 EST*

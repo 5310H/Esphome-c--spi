@@ -71,7 +71,7 @@ bool pb_encode_svarint(pb_ostream_t *stream, int64_t value)
 
 bool pb_encode_fixed32(pb_ostream_t *stream, const void *value)
 {
-    uint32_t val = *(const uint32_t*)value;
+    uint32_t val; memcpy(&val, value, 4);
     uint8_t bytes[4];
     bytes[0] = (uint8_t)(val & 0xFF);
     bytes[1] = (uint8_t)((val >> 8) & 0xFF);
@@ -82,7 +82,7 @@ bool pb_encode_fixed32(pb_ostream_t *stream, const void *value)
 
 bool pb_encode_fixed64(pb_ostream_t *stream, const void *value)
 {
-    uint64_t val = *(const uint64_t*)value;
+    uint64_t val; memcpy(&val, value, 8);
     uint8_t bytes[8];
     for (int i = 0; i < 8; i++)
         bytes[i] = (uint8_t)((val >> (i * 8)) & 0xFF);
@@ -132,27 +132,43 @@ static bool encode_basic_field(pb_ostream_t *stream, const pb_field_iter_t *iter
             return false;
     }
 
+    /* HTYPE check must come before tag encoding to prevent double tagging */
+    if (PB_HTYPE(type) == PB_HTYPE_CALLBACK) {
+        pb_callback_t *cb = (pb_callback_t*)iter->pData;
+        if (cb && cb->funcs.encode != NULL) {
+            return cb->funcs.encode(stream, iter->pos, &cb->arg);
+        }
+        return true;
+    }
+
     if (!pb_encode_tag(stream, wiretype, iter->pos->tag))
         return false;
 
     switch (PB_LTYPE(type))
     {
         case PB_LTYPE_VARINT:
-            return pb_encode_varint(stream, *(const uint64_t*)iter->pData);
+            {
+                uint64_t val = 0;
+                if (iter->pos->data_size == 8) memcpy(&val, iter->pData, 8);
+                else if (iter->pos->data_size == 4) { uint32_t v; memcpy(&v, iter->pData, 4); val = v; }
+                else if (iter->pos->data_size == 2) { uint16_t v; memcpy(&v, iter->pData, 2); val = v; }
+                else if (iter->pos->data_size == 1) { uint8_t v;  memcpy(&v, iter->pData, 1); val = v; }
+                return pb_encode_varint(stream, val);
+            }
         case PB_LTYPE_SVARINT:
-            return pb_encode_svarint(stream, *(const int64_t*)iter->pData);
+            {
+                int64_t val = 0;
+                if (iter->pos->data_size == 8) memcpy(&val, iter->pData, 8);
+                else if (iter->pos->data_size == 4) { int32_t v; memcpy(&v, iter->pData, 4); val = v; }
+                return pb_encode_svarint(stream, val);
+            }
         case PB_LTYPE_FIXED32:
             return pb_encode_fixed32(stream, iter->pData);
         case PB_LTYPE_FIXED64:
             return pb_encode_fixed64(stream, iter->pData);
         case PB_LTYPE_BYTES:
         case PB_LTYPE_STRING:
-            /* Implementation depends on callback or static buffer settings */
-            if (PB_HTYPE(type) == PB_HTYPE_CALLBACK) {
-                pb_callback_t *cb = (pb_callback_t*)iter->pData;
-                return cb->funcs.encode(stream, iter->pos, cb->arg);
-            }
-            return false;
+            return false; /* Static strings not implemented */
         default:
             return false;
     }

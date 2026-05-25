@@ -77,11 +77,11 @@ typedef struct _SubscribeStatesRequest {
 } SubscribeStatesRequest;
 
 /* Initializer values for message structs */
-#define HelloRequest_init_default                {{{NULL, NULL}}, 0, 0}
-#define HelloResponse_init_default               {0, 0, {{NULL, NULL}}, {{NULL, NULL}}}
-#define ConnectRequest_init_default              {{{NULL, NULL}}}
+#define HelloRequest_init_default                {{{NULL}, NULL}, 0, 0}
+#define HelloResponse_init_default               {0, 0, {{NULL}, NULL}, {{NULL}, NULL}}
+#define ConnectRequest_init_default              {{{NULL}, NULL}}
 #define ConnectResponse_init_default             {0}
-#define DeviceInfoResponse_init_default          {0, {{NULL, NULL}}, {{NULL, NULL}}, {{NULL, NULL}}, {{NULL, NULL}}, {{NULL, NULL}}, 0, {{NULL, NULL}}, {{NULL, NULL}}}
+#define DeviceInfoResponse_init_default          {0, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, 0, {{NULL}, NULL}, {{NULL}, NULL}}
 
 /* Field tags (for use in manual encoding/decoding) */
 #define HelloRequest_client_info_tag             1
@@ -109,6 +109,9 @@ extern const pb_field_t HelloResponse_fields[5];
 extern const pb_field_t ConnectRequest_fields[2];
 extern const pb_field_t ConnectResponse_fields[2];
 extern const pb_field_t DeviceInfoResponse_fields[10];
+extern const pb_field_t ListEntitiesRequest_fields[1];
+extern const pb_field_t ListEntitiesDoneResponse_fields[1];
+extern const pb_field_t SubscribeStatesRequest_fields[1];
 
 #ifdef __cplusplus
 } /* extern "C" */

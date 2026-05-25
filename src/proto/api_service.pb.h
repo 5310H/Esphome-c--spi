@@ -114,14 +114,15 @@ typedef struct _LightCommandRequest {
 } LightCommandRequest;
 
 /* Initializer values for message structs */
-#define ListEntitiesSensorResponse_init_default  {{{NULL, NULL}}, 0, {{NULL, NULL}}, {{NULL, NULL}}, {{NULL, NULL}}, {{NULL, NULL}}, 0, 0, {{NULL, NULL}}, 0, 0}
+#define ListEntitiesSensorResponse_init_default  {{{NULL}, NULL}, 0, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, 0, 0, {{NULL}, NULL}, 0, 0}
 #define SensorStateResponse_init_default         {0, 0, 0}
-#define ListEntitiesBinarySensorResponse_init_default {{{NULL, NULL}}, 0, {{NULL, NULL}}, {{NULL, NULL}}, {{NULL, NULL}}, 0, {{NULL, NULL}}, 0}
+#define ListEntitiesBinarySensorResponse_init_default {{{NULL}, NULL}, 0, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, 0, {{NULL}, NULL}, 0}
 #define BinarySensorStateResponse_init_default   {0, 0, 0}
-#define ListEntitiesSwitchResponse_init_default  {{{NULL, NULL}}, 0, {{NULL, NULL}}, {{NULL, NULL}}, {{NULL, NULL}}, 0, {{NULL, NULL}}, 0}
+#define ListEntitiesSwitchResponse_init_default  {{{NULL}, NULL}, 0, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, 0, {{NULL}, NULL}, 0}
 #define SwitchStateResponse_init_default         {0, 0}
+#define ListEntitiesLightResponse_init_default   {{{NULL}, NULL}, 0, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, 0, {{NULL}, NULL}, {{NULL}, NULL}}
 #define SwitchCommandRequest_init_default        {0, 0}
-#define LightCommandRequest_init_default         {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, {{NULL, NULL}}}
+#define LightCommandRequest_init_default         {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, {{NULL}, NULL}}
 
 /* Field tags (for use in manual encoding/decoding) */
 #define ListEntitiesSensorResponse_object_id_tag 1
@@ -171,6 +172,7 @@ extern const pb_field_t ListEntitiesBinarySensorResponse_fields[9];
 extern const pb_field_t BinarySensorStateResponse_fields[4];
 extern const pb_field_t ListEntitiesSwitchResponse_fields[9];
 extern const pb_field_t SwitchStateResponse_fields[3];
+extern const pb_field_t ListEntitiesLightResponse_fields[9];
 extern const pb_field_t SwitchCommandRequest_fields[3];
 extern const pb_field_t LightCommandRequest_fields[18];
 

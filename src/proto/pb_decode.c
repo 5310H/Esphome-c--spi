@@ -88,7 +88,7 @@ bool pb_skip_field(pb_istream_t *stream, pb_wire_type_t wire_type)
 bool pb_decode(pb_istream_t *stream, const pb_field_t fields[], void *dest_struct)
 {
     pb_field_iter_t iter;
-    if (!pb_field_iter_begin(&iter, fields, dest_struct))
+    if (fields == NULL || !pb_field_iter_begin(&iter, fields, dest_struct))
         return true;
     
     while (stream->bytes_left)
@@ -122,7 +122,10 @@ bool pb_decode(pb_istream_t *stream, const pb_field_t fields[], void *dest_struc
                 {
                     uint64_t val;
                     if (!pb_decode_varint(stream, &val)) return false;
-                    *(uint32_t*)iter.pData = (uint32_t)val;
+                    if (iter.pos->data_size == 8) memcpy(iter.pData, &val, 8);
+                    else if (iter.pos->data_size == 4) { uint32_t v = (uint32_t)val; memcpy(iter.pData, &v, 4); }
+                    else if (iter.pos->data_size == 2) { uint16_t v = (uint16_t)val; memcpy(iter.pData, &v, 2); }
+                    else if (iter.pos->data_size == 1) { uint8_t v = (uint8_t)val;  memcpy(iter.pData, &v, 1); }
                 }
                 else
                 {
