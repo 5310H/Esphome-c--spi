@@ -8,12 +8,16 @@
 #include <time.h>
 
 #include <sodium.h>
+#include <noise/protocol.h>
 
 #include "pb_encode.h"
 #include "pb_decode.h"
-#include "api_message.pb.h"
-#include "api_encryption.pb.h"
-#include "api_service.pb.h"
+#include "api.pb.h"
+
+// Forward declaration to silence warnings if the installed headers are an older version
+extern int noise_handshakestate_set_remote_public_key(NoiseHandshakeState *state, 
+                                                     const uint8_t *public_key, size_t len);
+
 
 /* ---------------------------------------------------------
  * ESPHome message type IDs (official)
@@ -117,7 +121,7 @@ static bool recv_frame(int sock, uint32_t *type,
 /* ---------------------------------------------------------
  * Encode a protobuf message into a buffer
  * --------------------------------------------------------- */
-static size_t encode_message(const pb_field_t fields[],
+static size_t encode_message(const pb_msgdesc_t *fields,
                              const void *msg,
                              uint8_t *out)
 {
@@ -137,62 +141,63 @@ typedef struct {
     size_t length;
 } pb_arg_t;
 
-static bool encode_bytes_cb(void *stream, const pb_field_t *field, void *const *arg)
+static bool encode_bytes_cb(pb_ostream_t *stream, const pb_field_iter_t *field, void *const *arg)
 {
-    pb_ostream_t *os = (pb_ostream_t *)stream;
     /* arg points to the field 'arg' in the pb_callback_t struct */
     const pb_arg_t *data = (const pb_arg_t *)(*arg);
     if (!data || !data->buffer) return true;
-    if (!pb_encode_tag(os, PB_WT_STRING, field->tag)) return false;
-    return pb_encode_string(os, data->buffer, data->length);
+    if (!pb_encode_tag(stream, PB_WT_STRING, field->tag)) return false;
+    return pb_encode_string(stream, data->buffer, data->length);
 }
 
-static bool decode_bytes_cb(void *stream, const pb_field_t *field, void **arg)
+static bool decode_bytes_cb(pb_istream_t *stream, const pb_field_iter_t *field, void **arg)
 {
-    pb_istream_t *is = (pb_istream_t *)stream;
     pb_arg_t *dest = (pb_arg_t *)*arg;
     (void)field;
 
     uint64_t len;
-    if (!pb_decode_varint(is, &len)) return false;
+    if (!pb_decode_varint(stream, &len)) return false;
     if (len > dest->length) return false;
 
     dest->length = (size_t)len;
-    return pb_read(is, (uint8_t *)dest->buffer, dest->length);
+    return pb_read(stream, (uint8_t *)dest->buffer, dest->length);
 }
 
 /* ---------------------------------------------------------
  * Encrypt a protobuf payload into EncryptedMessage
  * --------------------------------------------------------- */
-static size_t encrypt_message(const uint8_t *session_key,
-                              uint32_t inner_type,
+static NoiseCipherState *send_cipher = NULL;
+static NoiseCipherState *recv_cipher = NULL;
+
+static size_t encrypt_message(uint32_t inner_type,
                               const uint8_t *plaintext,
                               size_t plaintext_len,
                               uint8_t *out)
 {
     EncryptedMessage enc = EncryptedMessage_init_default;
-    uint8_t nonce[crypto_aead_chacha20poly1305_ietf_NPUBBYTES] = {0};
     uint8_t ciphertext[2048];
-    unsigned long long clen;
+    NoiseBuffer mbuf;
+    noise_buffer_set_output(mbuf, ciphertext, sizeof(ciphertext));
+    noise_buffer_set_input(mbuf, (uint8_t*)plaintext, plaintext_len);
 
-    crypto_aead_chacha20poly1305_ietf_encrypt(ciphertext, &clen,
-                                              plaintext, plaintext_len,
-                                              NULL, 0, NULL, nonce, session_key);
+    if (noise_cipherstate_encrypt(send_cipher, &mbuf) != NOISE_ERROR_NONE) {
+        return 0;
+    }
     
     enc.type = inner_type; 
     
-    pb_arg_t arg_payload = {ciphertext, (size_t)clen};
+    pb_arg_t arg_payload = {ciphertext, (size_t)mbuf.size};
     enc.data.funcs.encode = encode_bytes_cb;
     enc.data.arg = &arg_payload;
 
-    return encode_message(EncryptedMessage_fields, &enc, out);
+    size_t written = encode_message(EncryptedMessage_fields, &enc, out);
+    return written;
 }
 
 /* ---------------------------------------------------------
  * Decrypt EncryptedMessage
  * --------------------------------------------------------- */
-static bool decrypt_message(const uint8_t *session_key,
-                              const uint8_t *payload,
+static bool decrypt_message(const uint8_t *payload,
                               size_t len,
                               uint8_t *out,
                               uint32_t *inner_type,
@@ -214,19 +219,15 @@ static bool decrypt_message(const uint8_t *session_key,
     
     if (inner_type) *inner_type = enc.type;
 
-    uint8_t nonce[crypto_aead_chacha20poly1305_ietf_NPUBBYTES] = {0};
-    unsigned long long plen;
+    NoiseBuffer mbuf;
+    noise_buffer_set_output(mbuf, out, 2048);
+    noise_buffer_set_input(mbuf, ciphertext, arg.length);
 
-    if (crypto_aead_chacha20poly1305_ietf_decrypt(out, &plen,
-                                                  NULL,
-                                                  ciphertext, arg.length,
-                                                  NULL, 0, nonce, session_key) != 0)
-    {
-        printf("Decryption failed\n");
+    if (noise_cipherstate_decrypt(recv_cipher, &mbuf) != NOISE_ERROR_NONE) {
         return false;
     }
     
-    if (out_len) *out_len = (size_t)plen;
+    if (out_len) *out_len = mbuf.size;
     return true;
 }
 
@@ -237,7 +238,7 @@ int main(int argc, char *argv[])
 {
     const char *host = "127.0.0.1";
     int port         = 6053;
-    const char *api_key = "123456789"; /* CHANGE */
+    const char *psk_b64 = "your_base64_encryption_key"; // The "Encryption Key" from YAML
 
     if (argc > 1) {
         host = argv[1];
@@ -246,7 +247,7 @@ int main(int argc, char *argv[])
         port = atoi(argv[2]);
     }
     if (argc > 3) {
-        api_key = argv[3];
+        psk_b64 = argv[3];
     }
 
     if (sodium_init() < 0) {
@@ -270,10 +271,47 @@ int main(int argc, char *argv[])
     }
     printf("Connected\n");
 
+    /* ---------------- NOISE HANDSHAKE (IK) ---------------- */
+    NoiseHandshakeState *hs;
+    noise_handshakestate_new_by_name(&hs, "Noise_IK_25519_ChaChaPoly_SHA256", NOISE_ROLE_INITIATOR);
+    
+    // The "Right" prologue for ESPHome 2026
+    const char *prologue = "NoiseAPIInit\0\0"; 
+    noise_handshakestate_set_prologue(hs, prologue, 14);
+
+    // Decode the server public key from base64
+    uint8_t server_pub_key[32];
+    size_t out_len;
+    sodium_base642bin(server_pub_key, 32, psk_b64, strlen(psk_b64), NULL, &out_len, NULL, sodium_base64_VARIANT_ORIGINAL);
+    noise_handshakestate_set_remote_public_key(hs, server_pub_key, 32);
+
+    noise_handshakestate_start(hs);
+
+    // 1. Send first handshake message (Client -> Server)
+    uint8_t handshake_buf[512];
+    NoiseBuffer mbuf;
+    noise_buffer_set_output(mbuf, handshake_buf, sizeof(handshake_buf));
+    noise_handshakestate_write_message(hs, &mbuf, NULL);
+    
+    // ESPHome Noise framing: 0x01 + 2-byte length
+    uint8_t noise_frame[3] = { 0x01, (mbuf.size >> 8) & 0xFF, mbuf.size & 0xFF };
+    write(sock, noise_frame, 3);
+    write(sock, mbuf.data, mbuf.size);
+
+    // 2. Receive second handshake message (Server -> Client)
+    uint8_t recv_frame_hdr[3];
+    read(sock, recv_frame_hdr, 3);
+    uint16_t noise_len = (recv_frame_hdr[1] << 8) | recv_frame_hdr[2];
+    read(sock, handshake_buf, noise_len);
+    
+    noise_buffer_set_input(mbuf, handshake_buf, noise_len);
+    noise_handshakestate_read_message(hs, &mbuf, NULL);
+    noise_handshakestate_split(hs, &send_cipher, &recv_cipher);
+
     /* ---------------- HELLO ---------------- */
     HelloRequest hello = HelloRequest_init_default;
     hello.api_version_major = 1;
-    hello.api_version_minor = 9;
+    hello.api_version_minor = 10; // Updated for 2026 compatibility
 
     // Set up callback to send client identification string
     pb_arg_t client_info_arg = {(const uint8_t *)"Esphome-c-client", 16};
@@ -303,115 +341,22 @@ int main(int argc, char *argv[])
     }
     printf("Received HelloResponse (type %u, len %zu)\n", type, plen);
 
-    /* ---------------- ENCRYPTION REQUEST ---------------- */
-    uint8_t client_nonce[32];
-    /* Note: In a real scenario, this would be random and sent in EncryptionRequest.
-     * Since the current proto is empty, we zero it out to match the fake device. */
-    memset(client_nonce, 0, 32);
-
-    EncryptionRequest ereq = EncryptionRequest_init_default;
-
-    /* Note: EncryptionRequest in your current .pb.h is empty. 
-     * You may need to update your .proto files if nonces are required. */
-
-    len = encode_message(EncryptionRequest_fields, &ereq, buf);
-
-    if (!send_frame(sock, MSG_ENCRYPTION_REQUEST, buf, len)) {
-        fprintf(stderr, "Failed to send EncryptionRequest\n");
-        return 1;
-    }
-
-    /* ---------------- ENCRYPTION RESPONSE ---------------- */
-    if (!recv_frame(sock, &type, payload, sizeof(payload), &plen)) {
-        fprintf(stderr, "Failed to receive EncryptionResponse\n");
-        return 1;
-    }
-
-    EncryptionResponse eresp = EncryptionResponse_init_default;
-    pb_istream_t istream_err = pb_istream_from_buffer(payload, plen);
-    if (!pb_decode(&istream_err, EncryptionResponse_fields, &eresp)) {
-        fprintf(stderr, "Failed to decode EncryptionResponse\n");
-        return 1;
-    }
-
-    uint8_t server_nonce[32];
-    memset(server_nonce, 0, 32); // Populate from eresp if fields existed
-
-    /* ---------------- SESSION KEY ---------------- */
-    uint8_t session_key[32];
-
-    crypto_auth_hmacsha256_state st;
-    crypto_auth_hmacsha256_init(&st, (const unsigned char*)api_key, strlen(api_key));
-    crypto_auth_hmacsha256_update(&st, client_nonce, 32);
-    crypto_auth_hmacsha256_update(&st, server_nonce, 32);
-    crypto_auth_hmacsha256_final(&st, session_key);
-
-    printf("Session key derived\n");
-
-    /* ---------------- ENCRYPTED CONNECT REQUEST ---------------- */
-    ConnectRequest creq = ConnectRequest_init_default;
-
-    // Set up callback to send the actual API Key (password)
-    pb_arg_t password_arg = {(const uint8_t *)api_key, strlen(api_key)};
-    creq.password.funcs.encode = encode_bytes_cb;
-    creq.password.arg = &password_arg;
-
-    uint8_t plain[512];
-    size_t plain_len = encode_message(
-        ConnectRequest_fields,
-        &creq, plain);
-
-    size_t enc_len = encrypt_message(session_key, MSG_CONNECT_REQUEST, 
-                                     plain, plain_len, buf);
-
-    if (!send_frame(sock, MSG_ENCRYPTED_MESSAGE, buf, enc_len)) {
-        fprintf(stderr, "Failed to send Encrypted ConnectRequest\n");
-        return 1;
-    }
-
-    /* ---------------- ENCRYPTED CONNECT RESPONSE ---------------- */
-    if (!recv_frame(sock, &type, payload, sizeof(payload), &plen)) {
-        fprintf(stderr, "Failed to receive Encrypted ConnectResponse\n");
-        return 1;
-    }
-
-    if (plen == 0) {
-        fprintf(stderr, "Received empty response from server\n");
-        return 1;
-    }
-
-    uint8_t decrypted[512];
-    uint32_t inner_type;
-    size_t dlen;
-    if (!decrypt_message(session_key, payload, plen, decrypted, &inner_type, &dlen)) return 1;
-
-    ConnectResponse cres = ConnectResponse_init_default;
-    pb_istream_t istream_conn = pb_istream_from_buffer(decrypted, dlen);
-    if (!pb_decode(&istream_conn, ConnectResponse_fields, &cres)) {
-        fprintf(stderr, "Failed to decode ConnectResponse\n");
-        return 1;
-    }
-
-    printf("Connected (encrypted). invalid_password=%d\n", cres.invalid_password);
-
-    if (cres.invalid_password) {
-        close(sock);
-        return 1;
-    }
-
     /* ---------------- LIST ENTITIES ---------------- */
     printf("Requesting entities...\n");
+    uint8_t plain[512];
     ListEntitiesRequest lreq = {0}; // Empty message
     size_t lreq_len = encode_message(ListEntitiesRequest_fields, &lreq, plain);
-    size_t lreq_enc_len = encrypt_message(session_key, MSG_LIST_ENTITIES_REQUEST,
-                                          plain, lreq_len, buf);
+    size_t lreq_enc_len = encrypt_message(MSG_LIST_ENTITIES_REQUEST, plain, lreq_len, buf);
     send_frame(sock, MSG_ENCRYPTED_MESSAGE, buf, lreq_enc_len);
 
     bool list_done = false;
+    uint8_t decrypted[2048];
+    uint32_t inner_type;
+    size_t dlen;
     while (!list_done) {
         if (!recv_frame(sock, &type, payload, sizeof(payload), &plen)) break;
         
-        if (!decrypt_message(session_key, payload, plen, decrypted, &inner_type, &dlen)) continue;
+        if (!decrypt_message(payload, plen, decrypted, &inner_type, &dlen)) continue;
 
         pb_istream_t is = pb_istream_from_buffer(decrypted, dlen);
         char name_buf[128];
@@ -471,8 +416,7 @@ int main(int argc, char *argv[])
     printf("Subscribing to state updates...\n");
     SubscribeStatesRequest sreq = SubscribeStatesRequest_init_default;
     size_t sreq_len = encode_message(SubscribeStatesRequest_fields, &sreq, plain);
-    size_t sreq_enc_len = encrypt_message(session_key, MSG_SUBSCRIBE_STATES_REQUEST,
-                                          plain, sreq_len, buf);
+    size_t sreq_enc_len = encrypt_message(MSG_SUBSCRIBE_STATES_REQUEST, plain, sreq_len, buf);
     send_frame(sock, MSG_ENCRYPTED_MESSAGE, buf, sreq_enc_len);
 
     /* ---------------- SWITCH COMMAND ---------------- */
@@ -482,8 +426,7 @@ int main(int argc, char *argv[])
     swreq.key = 3;
     swreq.state = true;
     size_t swreq_len = encode_message(SwitchCommandRequest_fields, &swreq, plain);
-    size_t swreq_enc_len = encrypt_message(session_key, MSG_SWITCH_COMMAND_REQUEST,
-                                          plain, swreq_len, buf);
+    size_t swreq_enc_len = encrypt_message(MSG_SWITCH_COMMAND_REQUEST, plain, swreq_len, buf);
     send_frame(sock, MSG_ENCRYPTED_MESSAGE, buf, swreq_enc_len);
 
     /* ---------------- EVENT LOOP ---------------- */
@@ -515,8 +458,7 @@ int main(int argc, char *argv[])
         if (now - last_ping >= 10 && (!is_fake_device || ping_count < 5)) {
             PingRequest preq = PingRequest_init_default;
             size_t preq_len = encode_message(PingRequest_fields, &preq, plain);
-            size_t preq_enc_len = encrypt_message(session_key, MSG_PING_REQUEST,
-                                                  plain, preq_len, buf);
+            size_t preq_enc_len = encrypt_message(MSG_PING_REQUEST, plain, preq_len, buf);
             if (send_frame(sock, MSG_ENCRYPTED_MESSAGE, buf, preq_enc_len)) {
                 printf("Sent Ping\n");
                 last_ping = now;
@@ -530,7 +472,7 @@ int main(int argc, char *argv[])
                 break;
             }
             
-            if (!decrypt_message(session_key, payload, plen, decrypted, &inner_type, &dlen)) continue;
+            if (!decrypt_message(payload, plen, decrypted, &inner_type, &dlen)) continue;
 
             pb_istream_t is = pb_istream_from_buffer(decrypted, dlen);
 
